@@ -42,6 +42,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 // 登录/登出不需要认证
 if ($action === 'logout') {
+    Auth::init();
     Auth::logout();
     // 重定向到登录页（首页），而不是返回JSON
     header('Location: login.php');
