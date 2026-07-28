@@ -138,7 +138,7 @@ class Auth {
             'expires' => time() - 3600,
             'path' => '/',
             'httponly' => true,
-            'secure' => true,
+            'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
             'samesite' => 'Strict'
         ]);
         return true;

@@ -70,7 +70,28 @@ function formatFileSize($bytes)
   <h2>插件管理</h2>
   <div class="actions">
     <button class="btn btn-outline" onclick="showCreateModal()">+ 新建插件</button>
-    <button class="btn btn-primary" onclick="showUploadModal()">+ 上传插件</button>
+  </div>
+</div>
+
+<!-- ==================== 开发引导提示 ==================== -->
+<div style="background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 16px; margin-bottom: 20px; display: flex; gap: 12px; align-items: flex-start;">
+  <div style="font-size: 20px; line-height: 1; flex-shrink: 0;">&#128196;</div>
+  <div style="flex: 1; font-size: 13px; color: #5d4037;">
+    <strong style="font-size: 14px;">如何开发插件？</strong>
+    <p style="margin: 6px 0 0; line-height: 1.6;">
+      插件需要自行开发后放入 <code>plugin/</code> 目录。参考
+      <a href="https://github.com/yzdz666/yuexia-plugins" target="_blank">官方插件仓库</a>
+      和
+      <a href="../PLUGIN_SPEC.md" target="_blank">插件发布规范</a>
+      开发，或将插件提交到插件市场供他人使用。
+    </p>
+    <p style="margin: 6px 0 0; line-height: 1.6;">
+      也可以使用后台「AI 写插件」功能，用自然语言描述即可自动生成插件代码。
+    </p>
+  </div>
+  <div style="flex-shrink: 0; display: flex; gap: 8px;">
+    <a class="btn btn-outline btn-sm" href="aidev.php" style="white-space: nowrap;"><i class="fas fa-robot"></i> AI写插件</a>
+    <a class="btn btn-outline btn-sm" href="marketplace.php" style="white-space: nowrap;"><i class="fas fa-store"></i> 插件市场</a>
   </div>
 </div>
 
@@ -114,7 +135,7 @@ function formatFileSize($bytes)
     <?php if (empty($plugins)): ?>
       <div class="empty-state">
         <div class="empty-icon">--</div>
-        <p>暂无插件，点击右上角"上传插件"添加</p>
+        <p>暂无插件，参考 <a href="https://github.com/yzdz666/yuexia-plugins" target="_blank">官方插件仓库</a> 开发你的第一个插件</p>
       </div>
     <?php else: ?>
       <div class="table-responsive">
@@ -165,24 +186,6 @@ function formatFileSize($bytes)
       </table>
       </div>
     <?php endif; ?>
-  </div>
-</div>
-
-<!-- ==================== 上传插件 模态框 ==================== -->
-<div class="modal-overlay" id="uploadModal" style="display:none;">
-  <div class="modal">
-    <div class="modal-header">上传插件</div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label for="plugin_file">插件文件 <span class="text-danger">*</span></label>
-        <input type="file" id="plugin_file" class="form-control" accept=".php">
-        <div class="form-hint">仅支持 .php 文件，文件名只允许字母、数字、横杠、下划线和中文。同名文件将被覆盖。</div>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeUploadModal()">取消</button>
-      <button class="btn btn-primary" id="uploadBtn" onclick="uploadPlugin()">上传</button>
-    </div>
   </div>
 </div>
 
@@ -316,21 +319,6 @@ function deletePluginConfirm(pluginName) {
     });
 }
 
-// ==================== 上传插件 模态框 ====================
-function showUploadModal() {
-    document.getElementById('plugin_file').value = '';
-    document.getElementById('uploadModal').style.display = 'flex';
-}
-
-function closeUploadModal() {
-    document.getElementById('uploadModal').style.display = 'none';
-}
-
-// 点击遮罩层关闭上传模态框
-document.getElementById('uploadModal').addEventListener('click', function (e) {
-    if (e.target === this) closeUploadModal();
-});
-
 // ==================== 新建插件 模态框 ====================
 function showCreateModal() {
     document.getElementById('createPluginName').value = '';
@@ -391,38 +379,6 @@ document.addEventListener('keydown', function (e) {
         closeCreateModal();
     }
 });
-
-function uploadPlugin() {
-    var fileInput = document.getElementById('plugin_file');
-    if (!fileInput.files || !fileInput.files.length) {
-        alert('请选择插件文件');
-        return;
-    }
-    var file = fileInput.files[0];
-    // 客户端校验文件名（与服务端规则一致，支持中文）
-    if (!/^[\w\-\u4e00-\u9fff\u3400-\u4dbf]+\.php$/.test(file.name)) {
-        alert('文件名只允许字母、数字、横杠、下划线和中文，且必须为 .php 后缀');
-        return;
-    }
-    var formData = new FormData();
-    formData.append('plugin_file', file);
-
-    var btn = document.getElementById('uploadBtn');
-    btn.disabled = true;
-    var originalText = btn.textContent;
-    btn.textContent = '上传中...';
-
-    apiCall('plugin_upload', formData, function (res) {
-        btn.disabled = false;
-        btn.textContent = originalText;
-        if (res.success) {
-            alert('插件上传成功');
-            location.reload();
-        } else {
-            alert(res.message || '上传失败');
-        }
-    }, true);
-}
 
 // ==================== 编辑插件 ====================
 var currentEditingPlugin = null;

@@ -18,6 +18,14 @@ require_once('header.php');
 .mirror-preset-btn { padding: 6px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--card-bg); cursor: pointer; font-size: 12px; transition: var(--transition); }
 .mirror-preset-btn:hover { border-color: var(--primary); }
 .mirror-preset-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.skeleton-line {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--border) 25%, #e8e8e8 50%, var(--border) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 </style>
 
 <div class="page-header">
@@ -28,9 +36,15 @@ require_once('header.php');
 </div>
 
 <div class="github-setup">
-  <!-- GitHub账号状态 -->
-  <div id="githubStatus">
-    <div class="loading">检查GitHub登录状态...</div>
+  <!-- GitHub连接状态 -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div class="card-header"><h3>GitHub 连接状态</h3></div>
+    <div class="card-body">
+      <div id="githubStatus">
+        <div class="skeleton-line" style="width:60%;height:16px;margin-bottom:8px;"></div>
+        <div class="skeleton-line" style="width:40%;height:14px;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 镜像站设置 -->
@@ -76,32 +90,6 @@ require_once('header.php');
       <div id="repoSaveMsg" style="font-size: 12px; margin-top: 4px;"></div>
     </div>
   </div>
-
-  <!-- OAuth设置 -->
-  <div class="card">
-    <div class="card-header"><h3>GitHub OAuth配置</h3></div>
-    <div class="card-body">
-      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
-        需要在 <a href="https://github.com/settings/developers" target="_blank">GitHub Developer Settings</a> 创建OAuth App
-      </p>
-      <div class="form-group">
-        <label>Client ID</label>
-        <input type="text" id="clientId" placeholder="输入GitHub OAuth App的Client ID">
-      </div>
-      <div class="form-group">
-        <label>Client Secret</label>
-        <input type="password" id="clientSecret" placeholder="输入Client Secret">
-        <div class="help-text">已保存的Secret将会被加密存储</div>
-      </div>
-      <div class="form-group">
-        <label>Redirect URI</label>
-        <input type="text" id="redirectUri" placeholder="如不填则自动使用当前地址">
-        <div class="help-text">GitHub OAuth回调地址，默认使用当前服务器地址</div>
-      </div>
-      <button class="btn btn-primary" onclick="saveOAuthSettings()">保存OAuth设置</button>
-      <div id="oauthSaveMsg" style="font-size: 12px; margin-top: 4px;"></div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -118,12 +106,10 @@ function loadGithubStatus() {
                         '<div class="name">' + (u.name || u.login) + '</div>' +
                         '<div class="login">@' + u.login + '</div>' +
                     '</div>' +
-                    '<button class="btn btn-secondary" onclick="disconnectGithub()">断开连接</button>' +
                 '</div>';
             } else {
                 html = '<div class="github-status">' +
-                    '<div style="flex:1; color: var(--text-muted);">未绑定GitHub账号</div>' +
-                    '<button class="btn btn-primary" onclick="loginGithub()"><i class="fas fa-link"></i> 登录GitHub</button>' +
+                    '<div style="flex:1; color: var(--text-muted);">未连接 GitHub</div>' +
                 '</div>';
             }
             document.getElementById('githubStatus').innerHTML = html;
@@ -133,94 +119,17 @@ function loadGithubStatus() {
         });
 }
 
-function loginGithub() {
-    fetch('api/github_auth.php?type=login_url')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.code === 200 && data.url) {
-                var authWindow = window.open(data.url, 'github-auth', 'width=800,height=700');
-                var checkTimer = setInterval(function() {
-                    fetch('api/github_auth.php?type=status')
-                        .then(function(r) { return r.json(); })
-                        .then(function(status) {
-                            if (status.logged_in) {
-                                clearInterval(checkTimer);
-                                if (authWindow) authWindow.close();
-                                loadGithubStatus();
-                            }
-                        });
-                }, 2000);
-                setTimeout(function() { clearInterval(checkTimer); }, 30000);
-            } else {
-                alert('获取授权地址失败: ' + (data.msg || '未知错误'));
-            }
-        });
-}
-
-function disconnectGithub() {
-    if (!confirm('确定要断开GitHub账号连接吗？')) return;
-    fetch('api/github_auth.php?type=logout')
-        .then(function() { loadGithubStatus(); });
-}
-
 function loadSettings() {
     fetch('api/github_auth.php?type=get_settings')
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.code === 200) {
                 var s = data.settings;
-                document.getElementById('clientId').value = s.github_client_id || '';
-                if (s.github_client_secret_masked) {
-                    document.getElementById('clientSecret').value = s.github_client_secret_masked;
-                    document.getElementById('clientSecret').dataset.masked = '1';
-                }
-                document.getElementById('redirectUri').value = s.github_redirect_uri || '';
                 document.getElementById('mirrorUrl').value = s.mirror_url || 'https://github.com';
                 highlightMirrorPreset(s.mirror_url || 'https://github.com');
                 document.getElementById('officialRepo').value = s.official_repo || 'yuexia-php/plugins';
             }
         });
-}
-
-function saveOAuthSettings() {
-    var btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '保存中...';
-
-    var formData = 'type=save_settings&csrf_token=' + getCsrfToken();
-    formData += '&github_client_id=' + encodeURIComponent(document.getElementById('clientId').value);
-
-    var secret = document.getElementById('clientSecret').value;
-    if (!document.getElementById('clientSecret').dataset.masked) {
-        formData += '&github_client_secret=' + encodeURIComponent(secret);
-    }
-
-    formData += '&github_redirect_uri=' + encodeURIComponent(document.getElementById('redirectUri').value);
-    formData += '&mirror_url=' + encodeURIComponent(document.getElementById('mirrorUrl').value);
-    formData += '&official_repo=' + encodeURIComponent(document.getElementById('officialRepo').value);
-
-    fetch('api/github_auth.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: formData
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-        var msg = document.getElementById('oauthSaveMsg');
-        if (data.code === 200) {
-            msg.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> 保存成功</span>';
-        } else {
-            msg.innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> ' + data.msg + '</span>';
-        }
-        setTimeout(function() { msg.innerHTML = ''; }, 3000);
-    })
-    .catch(function() {
-        document.getElementById('oauthSaveMsg').innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> 保存失败</span>';
-    })
-    .finally(function() {
-        btn.disabled = false;
-        btn.textContent = '保存OAuth设置';
-    });
 }
 
 function saveMirrorSetting() {
@@ -282,6 +191,32 @@ function saveOfficialRepo() {
         btn.disabled = false;
         btn.textContent = '保存仓库设置';
     });
+}
+
+function createOAuthApp() {
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 跳转中...';
+    
+    fetch('api/github_auth.php?type=create_oauth_manifest')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.code === 200 && data.url) {
+                // 显示 callback URL 供用户确认
+                document.getElementById('redirectUri').value = data.callback_url;
+                // 跳转到 GitHub 创建页面
+                window.location.href = data.url;
+            } else {
+                document.getElementById('autoSetupMsg').innerHTML = '<span class="error-msg">' + (data.msg || '获取链接失败') + '</span>';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-magic"></i> 一键创建 OAuth App';
+            }
+        })
+        .catch(function() {
+            document.getElementById('autoSetupMsg').innerHTML = '<span class="error-msg">网络错误</span>';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic"></i> 一键创建 OAuth App';
+        });
 }
 
 document.getElementById('mirrorPresets').addEventListener('click', function(e) {

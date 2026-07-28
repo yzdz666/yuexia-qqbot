@@ -3,26 +3,53 @@ $pageTitle = '插件市场';
 require_once('header.php');
 ?>
 <style>
+/* ==================== 插件市场 - 卡片布局 ==================== */
 .marketplace-tabs {
     display: flex;
-    gap: 8px;
+    gap: 4px;
     margin-bottom: 24px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 12px;
+    padding: 4px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: fit-content;
 }
 .tab-btn {
-    padding: 8px 20px;
-    border: 1px solid var(--border);
-    background: var(--card-bg);
-    border-radius: var(--radius);
+    padding: 8px 18px;
+    border: none;
+    background: transparent;
+    border-radius: 7px;
     cursor: pointer;
     font-size: 13px;
+    font-weight: 500;
     color: var(--text-secondary);
     transition: var(--transition);
+    position: relative;
 }
-.tab-btn:hover { border-color: var(--primary); color: var(--text); }
-.tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+.tab-btn:hover { color: var(--text); background: var(--bg); }
+.tab-btn.active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
 
+/* 搜索框 */
+.search-box input {
+    width: 220px;
+    padding: 8px 14px 8px 34px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--card-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23adb5bd' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='7'/%3E%3Cline x1='21' y1='21' x2='15' y2='15'/%3E%3C/svg%3E") 12px center no-repeat;
+    transition: var(--transition);
+    outline: none;
+}
+.search-box input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(51,51,51,0.08);
+}
+
+/* 插件网格 */
 .plugin-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -31,95 +58,356 @@ require_once('header.php');
 .plugin-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border-radius: 10px;
     padding: 20px;
-    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+.plugin-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--border);
+    transition: background 0.3s ease;
 }
 .plugin-card:hover {
-    box-shadow: var(--shadow-hover);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
     border-color: var(--border-hover);
+    transform: translateY(-1px);
 }
-.plugin-card-header {
+.plugin-card:hover::before {
+    background: var(--primary);
+}
+.plugin-card .card-top {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
-.plugin-card-header h3 {
+.plugin-card .card-top h3 {
     font-size: 16px;
     font-weight: 600;
     margin: 0;
+    line-height: 1.4;
 }
 .plugin-desc {
     color: var(--text-secondary);
     font-size: 13px;
-    margin-bottom: 12px;
-    line-height: 1.5;
+    margin-bottom: 14px;
+    line-height: 1.6;
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 .plugin-meta {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+.plugin-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.submitter-avatar {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.avatar-mini {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    vertical-align: middle;
 }
 .plugin-tags {
     display: flex;
     gap: 4px;
     flex-wrap: wrap;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
 }
 .plugin-tag {
     display: inline-block;
-    padding: 2px 8px;
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-radius: 10px;
+    padding: 3px 10px;
+    border-radius: 6px;
     font-size: 11px;
+    font-weight: 500;
 }
+.plugin-tag.cat-功能 { background: #e8f4e8; color: #2d6a4f; }
+.plugin-tag.cat-娱乐 { background: #fef3e2; color: #b8860b; }
+.plugin-tag.cat-管理 { background: #e3f0fa; color: #1a6ba0; }
+.plugin-tag.cat-工具 { background: #f0e6fa; color: #6b3fa0; }
+.plugin-tag.cat-社交 { background: #fce4ec; color: #b03a5e; }
+.plugin-tag.cat-教育 { background: #e0f7fa; color: #00838f; }
+.plugin-tag.cat-其他 { background: var(--bg); color: var(--text-muted); }
+.plugin-tag.default { background: #f0f0f0; color: #555; }
+
+/* 卡片底部动作 */
 .plugin-actions {
     display: flex;
     gap: 8px;
     align-items: center;
-    padding-top: 12px;
+    padding-top: 14px;
     border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.version-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.version-badge.installed {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.version-badge.latest {
+    background: #e3f0fa;
+    color: #1a6ba0;
 }
 .version-current {
     color: var(--success);
     font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
 }
-.badge-success {
-    background: #e8f5e9;
-    color: #2e7d32;
-    padding: 2px 8px;
-    border-radius: 10px;
+.plugin-actions .btn {
     font-size: 12px;
-    white-space: nowrap;
-}
-.loading, .error, .empty-state {
-    grid-column: 1 / -1;
-    text-align: center;
-    padding: 40px;
-    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: 6px;
 }
 
-/* 同步提示 */
+/* 同步横幅 */
 .sync-banner {
-    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
     color: #fff;
-    border-radius: var(--radius);
-    padding: 20px 24px;
+    border-radius: 12px;
+    padding: 22px 26px;
     margin-bottom: 24px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.1);
 }
 .sync-banner .sync-info { flex: 1; }
-.sync-banner h3 { margin: 0 0 4px 0; font-size: 16px; }
-.sync-banner p { margin: 0; font-size: 13px; color: #a0aec0; }
-.sync-banner .btn { flex-shrink: 0; }
-#syncMsg { font-size: 12px; margin-top: 4px; }
+.sync-banner h3 { margin: 0 0 4px 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.sync-banner p { margin: 0; font-size: 13px; color: #94a3b8; }
+.sync-banner .btn {
+    font-size: 13px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+.sync-banner .btn-secondary {
+    background: rgba(255,255,255,0.1);
+    color: #e2e8f0;
+    border: 1px solid rgba(255,255,255,0.15);
+}
+.sync-banner .btn-secondary:hover {
+    background: rgba(255,255,255,0.18);
+}
+#syncMsg { font-size: 12px; margin-top: 6px; }
+
+/* 加载与空状态 */
+.plugin-grid .loading {
+    grid-column: 1 / -1;
+    padding: 40px 20px;
+}
+.loading-skeleton {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+    grid-column: 1 / -1;
+}
+.skeleton-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    overflow: hidden;
+}
+.skeleton-line {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--border) 25%, #e8e8e8 50%, var(--border) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    margin-bottom: 10px;
+}
+.skeleton-line:first-child { width: 70%; height: 18px; }
+.skeleton-line:nth-child(2) { width: 45%; }
+.skeleton-line:nth-child(3) { width: 90%; }
+.skeleton-line:nth-child(4) { width: 55%; }
+.skeleton-line:last-child { width: 35%; height: 32px; border-radius: 6px; margin-bottom: 0; margin-top: 14px; }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+.plugin-grid .error {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--danger);
+}
+.plugin-grid .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+}
+.plugin-grid .empty-state::before {
+    content: '\f002';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    display: block;
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+    .plugin-grid {
+        grid-template-columns: 1fr;
+    }
+    .loading-skeleton {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    .skeleton-card {
+        padding: 16px;
+    }
+    .search-box input {
+        width: 100%;
+    }
+    .sync-banner {
+        flex-direction: column;
+        text-align: center;
+    }
+    .marketplace-tabs {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* 操作指南 */
+.guide-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: var(--transition);
+}
+.guide-box:hover {
+    border-color: var(--border-hover);
+}
+.guide-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.guide-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.guide-title i {
+    color: #f0b429;
+    font-size: 16px;
+}
+.guide-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-right: 6px;
+}
+.guide-arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    color: var(--text-muted);
+}
+.guide-arrow.open {
+    transform: rotate(180deg);
+}
+.guide-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.35s ease, padding 0.3s ease;
+}
+.guide-body.open {
+    max-height: 500px;
+    padding: 0 20px 18px 20px;
+}
+.guide-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+.guide-step {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px;
+    background: var(--bg);
+    border-radius: 8px;
+    transition: var(--transition);
+}
+.guide-step:hover {
+    background: #f0f0f0;
+}
+.guide-step-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 15px;
+    color: var(--primary);
+}
+.guide-step-content {
+    flex: 1;
+    min-width: 0;
+}
+.guide-step-content strong {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 3px;
+    color: var(--text);
+}
+.guide-step-content span {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
 </style>
 
 <div class="page-header">
@@ -136,6 +424,49 @@ require_once('header.php');
   </div>
 </div>
 
+<!-- 傻瓜式操作指南 -->
+<div class="guide-box" id="guideBox">
+  <div class="guide-header" onclick="toggleGuide()">
+    <span class="guide-title"><i class="fas fa-lightbulb"></i> 操作指南</span>
+    <div>
+      <span class="guide-hint">点我展开</span>
+      <span class="guide-arrow"><i class="fas fa-chevron-down"></i></span>
+    </div>
+  </div>
+  <div class="guide-body" id="guideBody">
+    <div class="guide-steps">
+      <div class="guide-step">
+        <div class="guide-step-icon"><i class="fas fa-search"></i></div>
+        <div class="guide-step-content">
+          <strong>浏览插件</strong>
+          <span>在下面列表中查看所有可用插件，可以用搜索框按名称或描述查找</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-icon"><i class="fas fa-download"></i></div>
+        <div class="guide-step-content">
+          <strong>安装插件</strong>
+          <span>找到想要的插件，点击卡片上的「安装」按钮，系统会自动从 GitHub 下载并安装</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-icon"><i class="fas fa-sync-alt"></i></div>
+        <div class="guide-step-content">
+          <strong>更新插件</strong>
+          <span>有新版时可切换到「可更新」标签，点击「更新到 vX.X」一键升级</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <div class="guide-step-icon"><i class="fas fa-upload"></i></div>
+        <div class="guide-step-content">
+          <strong>发布自己的插件</strong>
+          <span>点击右上角「提交插件」，按步骤 Fork 官方仓库、添加插件文件、提交 Pull Request 即可</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 同步横幅 -->
 <div id="syncBanner" class="sync-banner" style="display:none;">
   <div class="sync-info">
@@ -144,7 +475,7 @@ require_once('header.php');
     <div id="syncMsg"></div>
   </div>
   <div style="display:flex; gap:8px; flex-shrink:0;">
-    <a id="githubPrLink" class="btn btn-secondary" href="#" target="_blank"><i class="fas fa-clipboard-list"></i> 审核 PR</a>
+    <button class="btn btn-secondary" onclick="reviewPendingPRs()"><i class="fas fa-robot"></i> 审核待处理 PR</button>
     <button class="btn btn-primary" onclick="syncFromGithub()"><i class="fas fa-sync-alt"></i> 从 GitHub 同步</button>
   </div>
 </div>
@@ -156,7 +487,11 @@ require_once('header.php');
 </div>
 
 <div id="pluginGrid" class="plugin-grid">
-  <div class="loading">加载中...</div>
+  <div class="loading-skeleton">
+    <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+    <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+    <div class="skeleton-card"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>
+  </div>
 </div>
 
 <div id="confirmModal" class="modal-overlay" style="display:none">
@@ -178,7 +513,6 @@ var allPlugins = [];
 var currentTab = 'all';
 
 function loadPlugins() {
-    document.getElementById('pluginGrid').innerHTML = '<div class="loading">加载中...</div>';
     fetch(API + '?type=list')
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -217,12 +551,18 @@ function renderPlugins() {
 }
 
 function createPluginCard(p) {
-    var tagsHtml = (p.tags || []).map(function(t) { return '<span class="plugin-tag">' + t + '</span>'; }).join('');
+    var tagsHtml = (p.tags || []).map(function(t) {
+        var catClass = 'default';
+        if (p.category) {
+            catClass = 'cat-' + p.category;
+        }
+        return '<span class="plugin-tag ' + catClass + '">' + t + '</span>';
+    }).join('');
     var actionBtn = '';
-    var statusBadge = '';
+    var versionBadge = '';
 
     if (p.installed) {
-        statusBadge = '<span class="badge-success">v' + p.installed_version + '</span>';
+        versionBadge = '<span class="version-badge installed">v' + p.installed_version + '</span>';
         if (p.has_update) {
             actionBtn = '<button class="btn btn-primary btn-sm" onclick="updatePlugin(\'' + p.name + '\')"><i class="fas fa-sync-alt"></i> 更新到 v' + p.version + '</button>';
             actionBtn += '<button class="btn btn-secondary btn-sm" onclick="uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
@@ -231,18 +571,19 @@ function createPluginCard(p) {
             actionBtn += '<button class="btn btn-secondary btn-sm" onclick="uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
         }
     } else {
+        versionBadge = '<span class="version-badge latest">v' + p.version + '</span>';
         actionBtn = '<button class="btn btn-primary btn-sm" onclick="installPlugin(\'' + p.name + '\')"><i class="fas fa-download"></i> 安装</button>';
     }
 
-    return '<div class="plugin-card">' +
-        '<div class="plugin-card-header">' +
+    return '<div class="plugin-card" onclick="openPluginUrl(\'' + p.name + '\')" title="点击查看项目主页">' +
+        '<div class="card-top">' +
             '<h3>' + (p.title || p.name) + '</h3>' +
-            statusBadge +
+            versionBadge +
         '</div>' +
         '<p class="plugin-desc">' + (p.description || '暂无描述') + '</p>' +
         '<div class="plugin-meta">' +
-            '<span class="plugin-author"><i class="fas fa-user"></i> ' + (p.author || '未知') + '</span>' +
-            '<span class="plugin-version"><i class="fas fa-tag"></i> v' + p.version + '</span>' +
+            (p.submitter ? '<span class="submitter-avatar"><img src="' + p.submitter.avatar + '" class="avatar-mini"> ' + p.submitter.login + '</span>' : '<span><i class="fas fa-user"></i> ' + (p.author || '未知') + '</span>') +
+            '<span><i class="fas fa-folder"></i> ' + (p.category || '未分类') + '</span>' +
         '</div>' +
         '<div class="plugin-tags">' + tagsHtml + '</div>' +
         '<div class="plugin-actions">' + actionBtn + '</div>' +
@@ -330,9 +671,29 @@ function filterPlugins() {
     renderPlugins();
 }
 
+function toggleGuide() {
+    var body = document.getElementById('guideBody');
+    var arrow = document.querySelector('.guide-arrow');
+    var hint = document.querySelector('.guide-hint');
+    body.classList.toggle('open');
+    arrow.classList.toggle('open');
+    if (body.classList.contains('open')) {
+        hint.textContent = '收起';
+    } else {
+        hint.textContent = '点我展开';
+    }
+}
+
 function getCsrfToken() {
     var meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? meta.content : '';
+}
+
+function openPluginUrl(name) {
+    var plugin = allPlugins.find(function(p) { return p.name === name; });
+    if (!plugin) return;
+    var url = plugin.homepage || (plugin.repository && plugin.repository.url) || plugin.downloadUrl || '';
+    if (url) window.open(url, '_blank');
 }
 
 function loadRepoInfo() {
@@ -342,7 +703,6 @@ function loadRepoInfo() {
             if (data.code === 200) {
                 document.getElementById('syncBanner').style.display = 'flex';
                 document.getElementById('syncRepoName').innerHTML = '<i class="fas fa-box"></i> ' + data.owner + '/' + data.repo;
-                document.getElementById('githubPrLink').href = data.pulls_url;
             }
         })
         .catch(function() {
@@ -377,6 +737,35 @@ function syncFromGithub() {
     .finally(function() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-sync-alt"></i> 从 GitHub 同步';
+    });
+}
+
+function reviewPendingPRs() {
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 审核中...';
+    document.getElementById('syncMsg').innerHTML = '正在审核待处理的 PR...';
+
+    fetch('api/github_auth.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'type=review_pending_prs&csrf_token=' + getCsrfToken()
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var msg = document.getElementById('syncMsg');
+        if (data.code === 200) {
+            msg.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> ' + data.msg + '</span>';
+        } else {
+            msg.innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> ' + data.msg + '</span>';
+        }
+    })
+    .catch(function() {
+        document.getElementById('syncMsg').innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> 审核请求失败</span>';
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-robot"></i> 审核待处理 PR';
     });
 }
 

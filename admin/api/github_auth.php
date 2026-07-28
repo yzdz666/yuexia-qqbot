@@ -20,6 +20,9 @@ switch ($type) {
     case "login_url":
         handleLoginUrl();
         break;
+    case "pat_login":
+        handlePatLogin();
+        break;
     case "callback":
         handleCallback();
         break;
@@ -46,6 +49,12 @@ switch ($type) {
         break;
     case "sync_from_github":
         handleSyncFromGithub();
+        break;
+    case "create_oauth_manifest":
+        handleCreateOAuthManifest();
+        break;
+    case "manifest_callback":
+        handleManifestCallback();
         break;
     default:
         echo json_encode(["code" => 400, "msg" => "无效操作"], JSON_UNESCAPED_UNICODE);
@@ -100,17 +109,24 @@ function getMirrorUrl($originalUrl) {
 
 function handleLoginUrl() {
     $clientId = getSetting('github_client_id');
+    
+    // 如果没有配置 OAuth App，但有 admin token，直接用 PAT 登录
+    if (empty($clientId)) {
+        $adminToken = getSetting('github_admin_token', '');
+        if (!empty($adminToken)) {
+            echo json_encode(["code" => 200, "pat_mode" => true, "msg" => "使用 Token 登录"], JSON_UNESCAPED_UNICODE);
+        } else {
+            echo json_encode(["code" => 400, "msg" => "未配置GitHub登录，请在系统设置中配置 OAuth 或 Token"], JSON_UNESCAPED_UNICODE);
+        }
+        exit;
+    }
+
     $redirectUri = getSetting('github_redirect_uri', '');
     if (empty($redirectUri)) {
         $redirectUri = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://')
             . $_SERVER['HTTP_HOST']
             . dirname($_SERVER['SCRIPT_NAME'])
             . '/github_auth.php?type=callback';
-    }
-
-    if (empty($clientId)) {
-        echo json_encode(["code" => 400, "msg" => "未配置GitHub Client ID，请先在系统设置中配置"], JSON_UNESCAPED_UNICODE);
-        exit;
     }
 
     $state = bin2hex(random_bytes(16));
@@ -230,6 +246,81 @@ function handleCallback() {
     echo json_encode([
         "code" => 200,
         "msg" => "GitHub绑定成功",
+        "user" => $_SESSION['github_user']
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 使用存储的 PAT Token 直接登录（不需要 OAuth App）
+ */
+function handlePatLogin() {
+    $adminToken = getSetting('github_admin_token', '');
+    if (empty($adminToken)) {
+        echo json_encode(["code" => 400, "msg" => "未配置 GitHub Token，请在系统设置中配置"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $ctx = stream_context_create([
+        'http' => [
+            'header' => "Authorization: Bearer " . $adminToken . "\r\nUser-Agent: Yuexia-PHP-Marketplace/1.0\r\n",
+            'timeout' => 10
+        ]
+    ]);
+
+    // 获取用户信息
+    $userResp = @file_get_contents('https://api.github.com/user', false, $ctx);
+    if (!$userResp) {
+        echo json_encode(["code" => 500, "msg" => "GitHub API 请求失败，Token 可能已失效"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $userData = json_decode($userResp, true);
+    if (!$userData || isset($userData['message'])) {
+        $errMsg = $userData['message'] ?? '未知错误';
+        echo json_encode(["code" => 500, "msg" => "GitHub 认证失败: " . $errMsg], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // 获取邮箱
+    $emailResp = @file_get_contents('https://api.github.com/user/emails', false, $ctx);
+    $primaryEmail = '';
+    if ($emailResp) {
+        $emails = json_decode($emailResp, true);
+        if (is_array($emails)) {
+            foreach ($emails as $e) {
+                if ($e['primary'] && $e['verified']) {
+                    $primaryEmail = $e['email'];
+                    break;
+                }
+            }
+        }
+    }
+
+    $githubId = $userData['id'];
+    $login = $userData['login'];
+    $avatar = $userData['avatar_url'];
+    $name = $userData['name'] ?? $login;
+
+    // 存数据库
+    try {
+        db()->execute(
+            "INSERT OR REPLACE INTO github_accounts (github_id, login, avatar_url, name, email, access_token, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','localtime'))",
+            [$githubId, $login, $avatar, $name, $primaryEmail, $adminToken]
+        );
+    } catch (Exception $e) {}
+
+    // 写 session
+    $_SESSION['github_user'] = [
+        'id' => $githubId,
+        'login' => $login,
+        'avatar' => $avatar,
+        'name' => $name,
+        'email' => $primaryEmail
+    ];
+
+    echo json_encode([
+        "code" => 200,
+        "msg" => "GitHub 登录成功",
         "user" => $_SESSION['github_user']
     ], JSON_UNESCAPED_UNICODE);
 }
@@ -533,3 +624,183 @@ function handleSyncFromGithub() {
         echo json_encode(["code" => 500, "msg" => "同步失败：无法写入marketplace.json"], JSON_UNESCAPED_UNICODE);
     }
 }
+
+/**
+ * 生成 GitHub App Manifest URL（一键创建 OAuth App）
+ */
+function handleCreateOAuthManifest() {
+    // 动态检测 callback URL
+    $callbackUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://')
+        . $_SERVER['HTTP_HOST']
+        . dirname($_SERVER['SCRIPT_NAME'])
+        . '/github_auth.php?type=manifest_callback';
+
+    $manifest = [
+        "name" => "yuexia-marketplace-" . bin2hex(random_bytes(3)),
+        "url" => "http://" . $_SERVER['HTTP_HOST'],
+        "redirect_url" => $callbackUrl,
+        "callback_urls" => [$callbackUrl],
+        "public" => true,
+        "default_permissions" => [
+            "contents" => "read",
+            "metadata" => "read",
+            "pull_requests" => "read",
+            "emails" => "read"
+        ],
+        "default_events" => ["pull_request"]
+    ];
+
+    $manifestJson = json_encode($manifest);
+    $manifestB64 = urlencode($manifestJson);
+    $githubUrl = "https://github.com/settings/apps/new?manifest=" . $manifestB64;
+
+    echo json_encode([
+        "code" => 200,
+        "url" => $githubUrl,
+        "callback_url" => $callbackUrl
+    ], JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * 处理 GitHub App Manifest 回调（自动保存 OAuth 凭证）
+ */
+function handleManifestCallback() {
+    $code = $_GET['code'] ?? '';
+    if (empty($code)) {
+        // 可能是用户取消了，重定向到设置页
+        header('Location: ' . dirname($_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_cancelled');
+        exit;
+    }
+
+    // 用 code 换 app 凭证
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\nUser-Agent: Yuexia-PHP-Marketplace/1.0\r\n",
+            'content' => '{}',
+            'timeout' => 15
+        ]
+    ]);
+
+    $resp = @file_get_contents("https://api.github.com/app-manifests/{$code}/conversions", false, $ctx);
+    if (!$resp) {
+        header('Location: ' . dirname($_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_failed');
+        exit;
+    }
+
+    $data = json_decode($resp, true);
+    if (!$data || !isset($data['client_id'])) {
+        header('Location: ' . dirname($_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_failed');
+        exit;
+    }
+
+    // 保存凭证
+    setSetting('github_client_id', $data['client_id']);
+    setSetting('github_client_secret', $data['client_secret']);
+    if (isset($data['pem'])) {
+        setSetting('github_app_pem', $data['pem']);
+    }
+    if (isset($data['id'])) {
+        setSetting('github_app_id', strval($data['id']));
+    }
+
+    wlog("GitHub OAuth App 自动配置成功: client_id=" . $data['client_id'], 'system');
+
+    // 重定向回设置页
+    header('Location: ' . dirname($_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_ok');
+}
+
+
+注意：severity 字段: safe=安全, warning=需关注, danger=高风险。
+score 字段: 0-100 分，越高越安全。
+如果没有发现问题，issues 数组可以为空。";
+
+    $maxCodeLen = 80000;
+    if (strlen($code) > $maxCodeLen) {
+        $code = substr($code, 0, $maxCodeLen) . "\n\n// ... (代码过长，已截断)";
+    }
+
+    $postData = json_encode([
+        "model" => $model,
+        "messages" => [
+            ["role" => "system", "content" => $systemPrompt],
+            ["role" => "user", "content" => "请审核以下 PHP 代码：\n\n```php\n" . $code . "\n```"]
+        ],
+        "temperature" => 0.1,
+        "max_tokens" => 4000
+    ]);
+
+    $apiUrl = $baseUrl . '/chat/completions';
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\nAuthorization: Bearer " . $apiKey . "\r\nUser-Agent: Yuexia-PHP-Marketplace/1.0\r\n",
+            'content' => $postData,
+            'timeout' => 60
+        ]
+    ]);
+
+    $response = @file_get_contents($apiUrl, false, $ctx);
+    if (!$response) {
+        echo json_encode(["code" => 500, "msg" => "AI API 请求失败，请检查 API Key 和网络连接"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $result = json_decode($response, true);
+    if (!$result || !isset($result['choices'][0]['message']['content'])) {
+        $errMsg = $result['error']['message'] ?? 'AI 响应格式异常';
+        echo json_encode(["code" => 500, "msg" => "AI 审核失败: " . $errMsg], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $aiContent = $result['choices'][0]['message']['content'];
+
+    $report = json_decode($aiContent, true);
+    if ($report && isset($report['severity'])) {
+        $severity = $report['severity'];
+        $score = $report['score'] ?? 0;
+        $summary = $report['summary'] ?? '';
+        $issues = $report['issues'] ?? [];
+        $overall = $report['overall'] ?? '';
+
+        $formattedReport = "## 审核结果\n\n";
+        $formattedReport .= "**评分**: {$score}/100\n\n";
+        $formattedReport .= "**总结**: {$summary}\n\n";
+
+        if (!empty($issues)) {
+            $formattedReport .= "### 发现的问题\n\n";
+            foreach ($issues as $i => $issue) {
+                $line = $issue['line'] !== 'general' ? ' (第 ' . $issue['line'] . ' 行)' : '';
+                $formattedReport .= "**{$issue['title']}**{$line}\n";
+                $formattedReport .= "   - 类型: {$issue['type']} | 严重度: {$issue['level']}\n";
+                $formattedReport .= "   - {$issue['description']}\n";
+                if (!empty($issue['suggestion'])) {
+                    $formattedReport .= "   - 建议: {$issue['suggestion']}\n";
+                }
+                $formattedReport .= "\n";
+            }
+        } else {
+            $formattedReport .= "未发现明显问题，代码质量良好。\n\n";
+        }
+
+        if ($overall) {
+            $formattedReport .= "### 总体评价\n\n{$overall}";
+        }
+
+        echo json_encode([
+            "code" => 200,
+            "report" => $formattedReport,
+            "severity" => $severity,
+            "score" => $score,
+            "summary" => $summary,
+            "issues_count" => count($issues)
+        ], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo json_encode([
+            "code" => 200,
+            "report" => $aiContent,
+            "severity" => "warning"
+        ], JSON_UNESCAPED_UNICODE);
+    }
+}
+

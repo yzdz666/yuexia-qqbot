@@ -29,7 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $result = Auth::login($username, $password);
         if ($result['success']) {
-            setcookie('admin_token', $result['token'], time() + 604800, '/');
+            setcookie('admin_token', $result['token'], [
+                'expires' => time() + 604800,
+                'path' => '/',
+                'httponly' => true,
+                'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
+                'samesite' => 'Strict'
+            ]);
             header('Location: index.php?token=' . $result['token']);
             exit;
         } else {

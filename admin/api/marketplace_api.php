@@ -84,11 +84,33 @@ function ensureMarketTable() {
 function handleList() {
     try {
         $remotePlugins = [];
-        if (file_exists(MARKETPLACE_FILE)) {
-            $content = file_get_contents(MARKETPLACE_FILE);
-            $data = json_decode($content, true);
-            $remotePlugins = $data['plugins'] ?? [];
+        // 5分钟内优先使用缓存，避免阻塞 PHP-FPM
+        $cacheFile = sys_get_temp_dir() . '/yuexia_plugins_cache.json';
+        $useCache = false;
+        if (file_exists($cacheFile) && time() - filemtime($cacheFile) < 300) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+            if ($cached) { $remotePlugins = $cached; $useCache = true; }
         }
+        if (!$remotePlugins) {
+            $githubRaw = tryFetchFromGithub();
+            if ($githubRaw) {
+                $remotePlugins = $githubRaw;
+                @file_put_contents($cacheFile, json_encode($remotePlugins));
+            } elseif (file_exists(MARKETPLACE_FILE)) {
+                $content = file_get_contents(MARKETPLACE_FILE);
+                $data = json_decode($content, true);
+                $remotePlugins = $data['plugins'] ?? [];
+            }
+        }
+
+        // 获取提交者信息
+        $submitters = [];
+        try {
+            $rows = db()->fetchAll("SELECT * FROM plugin_submitters");
+            foreach ($rows as $r) {
+                $submitters[$r['plugin_id']] = $r;
+            }
+        } catch (Exception $e) {}
 
         $installed = getInstalledPluginsInfo();
 
@@ -104,6 +126,18 @@ function handleList() {
                 $plugin['installed_at'] = $installedInfo['installed_at'];
                 $plugin['updated_at'] = $installedInfo['updated_at'];
             }
+
+            // 添加提交者信息
+            $pid = $plugin['name'];
+            if (isset($submitters[$pid])) {
+                $plugin['submitter'] = [
+                    'login' => $submitters[$pid]['github_login'],
+                    'avatar' => $submitters[$pid]['avatar_url'],
+                    'url' => $submitters[$pid]['profile_url'],
+                    'score' => $submitters[$pid]['score']
+                ];
+            }
+
             $result[] = $plugin;
         }
 
@@ -111,6 +145,34 @@ function handleList() {
     } catch (Exception $e) {
         echo json_encode(["code" => 500, "msg" => "获取列表失败: " . $e->getMessage()], JSON_UNESCAPED_UNICODE);
     }
+}
+
+/**
+ * 尝试从 GitHub 实时获取插件列表
+ */
+function getSetting($key, $d = '') {
+    try { $r = db()->fetch("SELECT value FROM plugin_market_settings WHERE key = ?", [$key]); return $r ? $r['value'] : $d; } catch (Exception $e) { return $d; }
+}
+
+function tryFetchFromGithub() {
+    try {
+        $repo = getSetting('official_repo', 'wuxiang999/yuexia-plugins');
+        $parts = explode('/', $repo);
+        if (count($parts) !== 2) return null;
+        $token = getSetting('github_admin_token', '');
+        $header = "User-Agent: Yuexia/1.0\r\n" . ($token ? "Authorization: Bearer {$token}\r\n" : "");
+        $ctx = stream_context_create(['http' => ['header' => $header, 'timeout' => 4, 'ignore_errors' => true]]);
+        $resp = @file_get_contents("https://api.github.com/repos/{$parts[0]}/{$parts[1]}/contents/plugins.json", false, $ctx);
+        if ($resp) {
+            $data = json_decode($resp, true);
+            if ($data && isset($data['content'])) {
+                $content = base64_decode($data['content']);
+                $json = json_decode($content, true);
+                if ($json) { @file_put_contents(MARKETPLACE_FILE, $content); return $json['plugins'] ?? $json; }
+            }
+        }
+    } catch (Exception $e) {}
+    return null;
 }
 
 function handleInstalled() {
