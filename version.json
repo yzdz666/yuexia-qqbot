@@ -1,0 +1,7 @@
+{
+  "version": "1.0.0",
+  "build": "20260728",
+  "name": "月下PHP QQ机器人框架",
+  "repo": "yzdz666/yuexia-qqbot",
+  "description": "基于 PHP 的多协议 QQ 机器人框架"
+}
