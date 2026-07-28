@@ -58,14 +58,22 @@ require_once('header.php');
         <div class="mirror-presets" id="mirrorPresets">
           <button class="mirror-preset-btn" data-url="https://github.com"><i class="fas fa-globe"></i> GitHub官方</button>
           <button class="mirror-preset-btn" data-url="https://gitclone.com/github.com"><i class="fas fa-rocket"></i> GitClone</button>
-          <button class="mirror-preset-btn" data-url="https://hub.fastgit.xyz"><i class="fas fa-bolt"></i> FastGit</button>
+          <button class="mirror-preset-btn" data-url="https://hub.gitfast.xyz"><i class="fas fa-bolt"></i> GitFast</button>
+          <button class="mirror-preset-btn" data-url="https://ghproxy.net"><i class="fas fa-forward"></i> GhProxy</button>
+          <button class="mirror-preset-btn" data-url="https://gh.api.cachefly.net"><i class="fas fa-cloud"></i> CacheFly</button>
+          <button class="mirror-preset-btn" data-url="https://ghproxy.com"><i class="fas fa-files"></i> GhProxy.com</button>
+          <button class="mirror-preset-btn" data-url="https://hub.nuaa.cf"><i class="fas fa-graduation-cap"></i> NUAA</button>
           <button class="mirror-preset-btn" data-url="https://github.moeyy.xyz"><i class="fas fa-microscope"></i> Moeyy</button>
           <button class="mirror-preset-btn" data-url="custom"><i class="fas fa-pen"></i> 自定义</button>
         </div>
-        <div class="form-group" style="margin-bottom:0">
-          <input type="text" id="mirrorUrl" placeholder="https://github.com" value="https://github.com">
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <div class="form-group" style="margin-bottom:0; flex:1; min-width:200px;">
+            <input type="text" id="mirrorUrl" placeholder="https://github.com" value="https://github.com">
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="testMirrorSpeed()" id="speedTestBtn"><i class="fas fa-tachometer-alt"></i> 测速</button>
+          <button class="btn btn-primary btn-sm" onclick="saveMirrorSetting()">保存</button>
         </div>
-        <button class="btn btn-primary" onclick="saveMirrorSetting()">保存镜像设置</button>
+        <div id="speedTestResults" style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"></div>
         <div id="mirrorSaveMsg" style="font-size: 12px; margin-top: 4px;"></div>
       </div>
     </div>
@@ -157,6 +165,99 @@ function saveMirrorSetting() {
 function highlightMirrorPreset(url) {
     document.querySelectorAll('.mirror-preset-btn').forEach(function(b) {
         b.classList.toggle('active', b.dataset.url === url);
+    });
+}
+
+function testMirrorSpeed() {
+    var btn = document.getElementById('speedTestBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 测速中...';
+    
+    var mirrors = [
+        {name:'GitHub官方', url:'https://github.com'},
+        {name:'GitClone', url:'https://gitclone.com/github.com'},
+        {name:'GitFast', url:'https://hub.gitfast.xyz'},
+        {name:'GhProxy', url:'https://ghproxy.net'},
+        {name:'CacheFly', url:'https://gh.api.cachefly.net'},
+        {name:'GhProxy.com', url:'https://ghproxy.com'},
+        {name:'NUAA', url:'https://hub.nuaa.cf'},
+        {name:'Moeyy', url:'https://github.moeyy.xyz'}
+    ];
+    
+    var resultsDiv = document.getElementById('speedTestResults');
+    resultsDiv.innerHTML = '';
+    
+    mirrors.forEach(function(m) {
+        var chip = document.createElement('span');
+        chip.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid var(--border);background:var(--card-bg);';
+        chip.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ' + m.name;
+        resultsDiv.appendChild(chip);
+        
+        var start = Date.now();
+        var img = new Image();
+        var timeout = setTimeout(function() {
+            chip.innerHTML = '<i class="fas fa-times-circle" style="color:var(--danger);"></i> ' + m.name + ' 超时';
+            chip.style.borderColor = '#fecaca';
+            checkDone();
+        }, 5000);
+        
+        img.onload = function() {
+            clearTimeout(timeout);
+            var ms = Date.now() - start;
+            var color = ms < 500 ? 'var(--success)' : ms < 1500 ? 'var(--warning)' : 'var(--danger)';
+            chip.innerHTML = '<i class="fas fa-circle" style="color:' + color + ';font-size:8px;"></i> ' + m.name + ' ' + ms + 'ms';
+            chip.style.borderColor = ms < 500 ? '#bbf7d0' : ms < 1500 ? '#fef08a' : '#fecaca';
+            checkDone();
+        };
+        img.onerror = function() {
+            clearTimeout(timeout);
+            chip.innerHTML = '<i class="fas fa-times-circle" style="color:var(--danger);"></i> ' + m.name + ' 不通';
+            chip.style.borderColor = '#fecaca';
+            checkDone();
+        };
+        img.src = m.url + '/favicon.ico?' + start;
+    });
+    
+    var results = [];
+    var tested = 0;
+    function checkDone() {
+        tested++;
+        if (tested >= mirrors.length) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-tachometer-alt"></i> 重新测速';
+            // 自动选择最快的可用镜像
+            var chips = resultsDiv.querySelectorAll('span');
+            var fastest = null;
+            var fastestMs = Infinity;
+            chips.forEach(function(c) {
+                var match = c.textContent.match(/^(\S+)\s+(\d+)ms$/);
+                if (match) {
+                    var ms = parseInt(match[2]);
+                    if (ms < fastestMs) { fastestMs = ms; fastest = match[1]; }
+                }
+            });
+            if (fastest) {
+                var fastestUrl = '';
+                for (var i = 0; i < mirrors.length; i++) {
+                    if (mirrors[i].name === fastest) { fastestUrl = mirrors[i].url; break; }
+                }
+                if (fastestUrl) {
+                    document.getElementById('mirrorUrl').value = fastestUrl;
+                    highlightMirrorPreset(fastestUrl);
+                    // 自动保存
+                    saveMirrorSettingSilent(fastestUrl);
+                    resultsDiv.innerHTML += '<div style="width:100%;margin-top:4px;font-size:12px;color:var(--success);"><i class="fas fa-check-circle"></i> 已自动选择最快镜像: ' + fastest + ' (' + fastestMs + 'ms)</div>';
+                }
+            }
+        }
+    }
+}
+
+function saveMirrorSettingSilent(url) {
+    fetch('api/github_auth.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'type=save_settings&csrf_token=' + getCsrfToken() + '&mirror_url=' + encodeURIComponent(url)
     });
 }
 
