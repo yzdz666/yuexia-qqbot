@@ -4,7 +4,7 @@
  * 
  * 部署后设置定时任务：
  *   crontab -e
- *   添加: 0 */6 * * * php7.4 /path/to/auto_update.php >/dev/null 2>&1
+ *   添加: 0 /6 * * * php7.4 /path/to/auto_update.php >/dev/null 2>&1
  * 
  * 更新来源: version.json 中 repo 字段指定的 GitHub 仓库
  * 跳过: data/ 目录 (保留配置和数据库)
