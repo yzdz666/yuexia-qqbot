@@ -131,6 +131,40 @@ require_once('header.php');
     border-radius: 50%;
     vertical-align: middle;
 }
+.builtin-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #e8f4fd;
+    color: #0369a1;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.installed-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    background: #dcfce7;
+    color: #166534;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+.plugin-card-installed {
+    border-left: 3px solid var(--success) !important;
+}
+.plugin-card-builtin {
+    border-left: 3px solid #93c5fd !important;
+    cursor: default !important;
+    opacity: 0.85;
+}
+.plugin-card-builtin:hover {
+    transform: none !important;
+    box-shadow: var(--shadow) !important;
+}
 .plugin-tags {
     display: flex;
     gap: 4px;
@@ -507,6 +541,23 @@ require_once('header.php');
   </div>
 </div>
 
+<!-- 插件详情弹窗 -->
+<div id="detailModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeDetailModal()">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 id="detailTitle">插件详情</h3>
+      <button class="btn btn-secondary btn-sm" onclick="closeDetailModal()" style="position:absolute;right:16px;top:16px;">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody" style="min-height:100px;font-size:14px;line-height:1.7;color:var(--text-secondary);">
+      加载中...
+    </div>
+    <div class="modal-footer" id="detailFooter" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-primary" id="detailInstallBtn" style="display:none;"><i class="fas fa-download"></i> 安装</button>
+      <button class="btn btn-secondary" onclick="closeDetailModal()">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var API = 'api/marketplace_api.php';
 var allPlugins = [];
@@ -560,24 +611,34 @@ function createPluginCard(p) {
     }).join('');
     var actionBtn = '';
     var versionBadge = '';
+    var builtinBadge = p.builtin ? '<span class="builtin-badge"><i class="fas fa-star"></i> 系统内置</span>' : '';
+    var installedBadge = p.installed && !p.builtin ? '<span class="installed-badge"><i class="fas fa-check"></i> 已安装</span>' : '';
+    var nameWithBadge = (builtinBadge ? builtinBadge + ' ' : '') + (installedBadge ? installedBadge + ' ' : '') + (p.title || p.name);
+    var cardClass = 'plugin-card' + (p.installed ? ' plugin-card-installed' : '') + (p.builtin ? ' plugin-card-builtin' : '');
 
     if (p.installed) {
         versionBadge = '<span class="version-badge installed">v' + p.installed_version + '</span>';
         if (p.has_update) {
-            actionBtn = '<button class="btn btn-primary btn-sm" onclick="updatePlugin(\'' + p.name + '\')"><i class="fas fa-sync-alt"></i> 更新到 v' + p.version + '</button>';
-            actionBtn += '<button class="btn btn-secondary btn-sm" onclick="uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
+            actionBtn = '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();updatePlugin(\'' + p.name + '\')"><i class="fas fa-sync-alt"></i> 更新到 v' + p.version + '</button>';
+            if (!p.builtin) actionBtn += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
         } else {
             actionBtn = '<span class="version-current"><i class="fas fa-check-circle"></i> 已安装</span>';
-            actionBtn += '<button class="btn btn-secondary btn-sm" onclick="uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
+            if (!p.builtin) actionBtn += '<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();uninstallPlugin(\'' + p.name + '\')"><i class="fas fa-trash-alt"></i> 卸载</button>';
         }
     } else {
         versionBadge = '<span class="version-badge latest">v' + p.version + '</span>';
-        actionBtn = '<button class="btn btn-primary btn-sm" onclick="installPlugin(\'' + p.name + '\')"><i class="fas fa-download"></i> 安装</button>';
+        actionBtn = '<button class="btn btn-primary btn-sm" onclick="event.stopPropagation();installPlugin(\'' + p.name + '\')"><i class="fas fa-download"></i> 安装</button>';
     }
 
-    return '<div class="plugin-card" onclick="openPluginUrl(\'' + p.name + '\')" title="点击查看项目主页">' +
+    var hasLink = !p.builtin && (p.homepage || (p.repository && p.repository.url));
+    var detailBtn = hasLink ? '<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openPluginUrl(\'' + p.name + '\')"><i class="fas fa-external-link-alt"></i></button>' : '';
+    var titleLink = hasLink ? '<a href="javascript:void(0)" onclick="event.stopPropagation();openPluginUrl(\'' + p.name + '\')" style="text-decoration:none;color:inherit;" title="查看项目主页">' + nameWithBadge + '</a>' : nameWithBadge;
+    var cardClick = p.builtin ? '' : ' onclick="showPluginDetail(\'' + p.name + '\')"';
+    var cardTitle = p.builtin ? '系统内置插件' : (p.description || '');
+
+    return '<div class="' + cardClass + '" title="' + cardTitle + '"' + cardClick + '>' +
         '<div class="card-top">' +
-            '<h3>' + (p.title || p.name) + '</h3>' +
+            '<h3>' + titleLink + '</h3>' +
             versionBadge +
         '</div>' +
         '<p class="plugin-desc">' + (p.description || '暂无描述') + '</p>' +
@@ -586,7 +647,7 @@ function createPluginCard(p) {
             '<span><i class="fas fa-folder"></i> ' + (p.category || '未分类') + '</span>' +
         '</div>' +
         '<div class="plugin-tags">' + tagsHtml + '</div>' +
-        '<div class="plugin-actions">' + actionBtn + '</div>' +
+        '<div class="plugin-actions">' + actionBtn + detailBtn + '</div>' +
     '</div>';
 }
 
@@ -694,6 +755,84 @@ function openPluginUrl(name) {
     if (!plugin) return;
     var url = plugin.homepage || (plugin.repository && plugin.repository.url) || plugin.downloadUrl || '';
     if (url) window.open(url, '_blank');
+}
+
+function showPluginDetail(name) {
+    var plugin = allPlugins.find(function(p) { return p.name === name; });
+    if (!plugin) return;
+    
+    document.getElementById('detailTitle').textContent = plugin.title || plugin.name;
+    
+    var body = document.getElementById('detailBody');
+    var html = '';
+    
+    html += '<div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">';
+    html += '<div style="width:48px;height:48px;border-radius:8px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--text-muted);">';
+    html += (plugin.name || '?')[0].toUpperCase();
+    html += '</div>';
+    html += '<div><div style="font-weight:600;font-size:16px;color:var(--text);">' + (plugin.title || plugin.name) + '</div>';
+    html += '<div style="font-size:12px;color:var(--text-muted);">v' + plugin.version + ' · ' + (plugin.author || '未知') + '</div></div></div>';
+    
+    html += '<div style="margin-bottom:12px;">' + (plugin.description || '暂无描述') + '</div>';
+    
+    if (plugin.tags && plugin.tags.length) {
+        html += '<div style="margin-bottom:12px;display:flex;gap:4px;flex-wrap:wrap;">';
+        plugin.tags.forEach(function(t) { html += '<span style="padding:2px 8px;background:var(--bg);border-radius:4px;font-size:11px;color:var(--text-secondary);">' + t + '</span>'; });
+        html += '</div>';
+    }
+    
+    html += '<table style="width:100%;font-size:13px;">';
+    html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">作者</td><td>' + (plugin.author || '未知') + '</td></tr>';
+    html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">分类</td><td>' + (plugin.category || '未分类') + '</td></tr>';
+    html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">版本</td><td>v' + plugin.version + '</td></tr>';
+    html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">协议</td><td>' + (plugin.license || 'MIT') + '</td></tr>';
+    
+    var projUrl = plugin.homepage || (plugin.repository && plugin.repository.url) || '';
+    if (projUrl) {
+        html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">项目</td><td><a href="' + projUrl + '" target="_blank" style="color:var(--primary);">' + projUrl.replace(/^https?:\/\//, '').substring(0, 40) + '</a></td></tr>';
+    }
+    if (plugin.downloadUrl) {
+        html += '<tr><td style="padding:4px 8px;color:var(--text-muted);">下载</td><td style="font-size:11px;color:var(--text-muted);word-break:break-all;">' + plugin.downloadUrl.replace(/^https?:\/\//, '').substring(0, 50) + '</td></tr>';
+    }
+    html += '</table>';
+    
+    body.innerHTML = html;
+    
+    // 底部按钮
+    var footer = document.getElementById('detailFooter');
+    footer.innerHTML = '';
+    if (projUrl) {
+        var projBtn = document.createElement('a');
+        projBtn.href = projUrl;
+        projBtn.target = '_blank';
+        projBtn.className = 'btn btn-outline btn-sm';
+        projBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> 查看项目';
+        footer.appendChild(projBtn);
+    }
+    if (!plugin.installed) {
+        var installBtn = document.createElement('button');
+        installBtn.className = 'btn btn-primary btn-sm';
+        installBtn.innerHTML = '<i class="fas fa-download"></i> 安装';
+        installBtn.onclick = function() { installPlugin(plugin.name); closeDetailModal(); };
+        footer.appendChild(installBtn);
+    } else if (!plugin.builtin) {
+        var uninstallBtn = document.createElement('button');
+        uninstallBtn.className = 'btn btn-secondary btn-sm';
+        uninstallBtn.innerHTML = '<i class="fas fa-trash-alt"></i> 卸载';
+        uninstallBtn.onclick = function() { uninstallPlugin(plugin.name); closeDetailModal(); };
+        footer.appendChild(uninstallBtn);
+    }
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'btn btn-secondary btn-sm';
+    closeBtn.textContent = '关闭';
+    closeBtn.onclick = closeDetailModal;
+    footer.appendChild(closeBtn);
+    
+    document.getElementById('detailModal').style.display = 'flex';
+}
+
+function closeDetailModal() {
+    document.getElementById('detailModal').style.display = 'none';
 }
 
 function loadRepoInfo() {

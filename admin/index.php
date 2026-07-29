@@ -247,4 +247,86 @@ if (is_array($loadAvg) && count($loadAvg) >= 1) {
   </div>
 </div>
 
+<!-- ==================== 版本更新 ==================== -->
+<div class="card" style="margin-top:16px;">
+  <div class="card-header">
+    <h3>框架版本</h3>
+  </div>
+  <div class="card-body" style="display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+    <div>
+      <span style="font-size:13px; color:var(--text-secondary);">当前版本：</span>
+      <span style="font-weight:600;">
+        <?php
+        $vFile = __DIR__ . '/../version.json';
+        $vData = @json_decode(file_get_contents($vFile), true);
+        if ($vData) echo 'v' . htmlspecialchars($vData['version']) . ' (' . htmlspecialchars($vData['build']) . ')';
+        else echo '未知';
+        ?>
+      </span>
+    </div>
+    <div>
+      <span id="remoteVersion" style="font-size:13px; color:var(--text-secondary);"></span>
+      <button class="btn btn-outline btn-sm" onclick="checkUpdate()" id="checkUpdateBtn"><i class="fas fa-refresh"></i> 检查更新</button>
+      <button class="btn btn-primary btn-sm" onclick="doUpdate()" id="updateBtn" style="display:none;"><i class="fas fa-download"></i> 更新</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function checkUpdate() {
+  var btn = document.getElementById('checkUpdateBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 检查中...';
+  
+  // 通过服务器代理检查更新（解决浏览器无法直连 GitHub 的问题）
+  fetch('api/github_auth.php?type=check_framework_version')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.code === 200) {
+        document.getElementById('remoteVersion').innerHTML = '最新版本：v' + data.remote_version + ' (' + data.remote_build + ')';
+        if (data.has_update) {
+          document.getElementById('updateBtn').style.display = 'inline-flex';
+          document.getElementById('remoteVersion').innerHTML += ' <span style="color:var(--success);font-weight:600;">可更新</span>';
+        } else {
+          document.getElementById('remoteVersion').innerHTML += ' <span style="color:var(--text-muted);">已是最新</span>';
+        }
+      } else {
+        document.getElementById('remoteVersion').innerHTML = '<span style="color:var(--text-muted);">' + (data.msg || '检查失败') + '</span>';
+      }
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-refresh"></i> 检查更新';
+    })
+    .catch(function() {
+      document.getElementById('remoteVersion').innerHTML = '<span style="color:var(--text-muted);">网络请求失败</span>';
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-refresh"></i> 检查更新';
+    });
+}
+
+function doUpdate() {
+  if (!confirm('确定要更新框架吗？更新过程中可能短暂影响服务。')) return;
+  var btn = document.getElementById('updateBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 更新中...';
+  
+  fetch('api.php', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'action=framework_update&csrf_token=' + encodeURIComponent(document.querySelector('meta[name="csrf-token"]').content)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.success) {
+      alert('更新成功！' + (d.message ? '\\n' + d.message : ''));
+      document.getElementById('updateBtn').style.display = 'none';
+    } else {
+      alert('更新失败：' + (d.message || '未知错误'));
+    }
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-download"></i> 更新';
+  })
+  .catch(function() {
+    alert('更新请求失败');
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-download"></i> 更新';
+  });
+}
+
+checkUpdate();
+</script>
+
 <?php require_once('footer.php'); ?>

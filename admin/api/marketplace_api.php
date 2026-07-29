@@ -114,14 +114,25 @@ function handleList() {
 
         $installed = getInstalledPluginsInfo();
 
+        // 检查本地文件系统，确定已存在的插件
+        $localPlugins = scanLocalPlugins();
+        $localNames = [];
+        foreach ($localPlugins as $lp) {
+            $localNames[$lp['name']] = $lp;
+        }
+
         $result = [];
+        $builtinPlugins = ['名言', '音乐', '发送测试', 'Ark卡片'];
         foreach ($remotePlugins as $plugin) {
             $name = $plugin['name'];
             $installedInfo = $installed[$name] ?? null;
-            $plugin['installed'] = $installedInfo !== null;
-            $plugin['installed_version'] = $installedInfo ? $installedInfo['version'] : null;
+            // 如果插件在 plugin_market 中有记录，或者本地文件存在，都视为已安装
+            $isInstalled = $installedInfo !== null || isset($localNames[$name]);
+            $plugin['installed'] = $isInstalled;
+            $plugin['installed_version'] = $installedInfo ? $installedInfo['version'] : ($isInstalled ? ($plugin['version'] ?? '1.0.0') : null);
             $plugin['has_update'] = $installedInfo && isset($plugin['version']) && version_compare($installedInfo['version'], $plugin['version'], '<');
-            $plugin['local_path'] = $installedInfo ? $installedInfo['path'] : null;
+            $plugin['local_path'] = $installedInfo ? $installedInfo['path'] : (isset($localNames[$name]) ? ($localNames[$name]['path'] ?? null) : null);
+            $plugin['builtin'] = in_array($name, $builtinPlugins);
             if ($installedInfo) {
                 $plugin['installed_at'] = $installedInfo['installed_at'];
                 $plugin['updated_at'] = $installedInfo['updated_at'];
@@ -218,19 +229,24 @@ function handleInstall($pluginName) {
             exit;
         }
 
+        // 优先使用 downloadUrl（Release 包），回退到 repository URL
+        $downloadUrl = $pluginInfo['downloadUrl'] ?? '';
         $repoUrl = $pluginInfo['repository']['url'] ?? '';
-        if (empty($repoUrl)) {
-            echo json_encode(["code" => 400, "msg" => "插件仓库地址为空"], JSON_UNESCAPED_UNICODE);
+
+        if (!empty($downloadUrl)) {
+            $result = installFromUrl($downloadUrl, $pluginName);
+        } elseif (!empty($repoUrl)) {
+            $result = installFromGithub($repoUrl, $pluginName);
+        } else {
+            echo json_encode(["code" => 400, "msg" => "插件下载地址为空"], JSON_UNESCAPED_UNICODE);
             exit;
         }
-
-        $result = installFromGithub($repoUrl, $pluginName);
 
         if ($result['success']) {
             $version = $pluginInfo['version'] ?? '1.0.0';
             db()->execute(
                 "INSERT OR REPLACE INTO plugin_market (plugin_name, installed_version, repository_url, updated_at) VALUES (?, ?, ?, datetime('now','localtime'))",
-                [$pluginName, $version, $repoUrl]
+                [$pluginName, $version, $repoUrl ?: $downloadUrl]
             );
             wlog("插件安装成功: {$pluginName} v{$version}", 'system');
             echo json_encode(["code" => 200, "msg" => "安装成功", "version" => $version], JSON_UNESCAPED_UNICODE);

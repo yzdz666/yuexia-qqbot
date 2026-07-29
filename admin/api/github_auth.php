@@ -50,6 +50,12 @@ switch ($type) {
     case "sync_from_github":
         handleSyncFromGithub();
         break;
+    case "test_proxy":
+        handleTestProxy();
+        break;
+    case "check_framework_version":
+        handleCheckFrameworkVersion();
+        break;
     case "create_oauth_manifest":
         handleCreateOAuthManifest();
         break;
@@ -347,7 +353,7 @@ function handleSaveSettings() {
         exit;
     }
 
-    $fields = ['github_client_id', 'github_client_secret', 'github_redirect_uri', 'mirror_url', 'official_repo'];
+    $fields = ['github_client_id', 'github_client_secret', 'github_redirect_uri', 'mirror_url', 'official_repo', 'proxy_url', 'proxy_type'];
     foreach ($fields as $field) {
         $val = $_POST[$field] ?? '';
         setSetting($field, $val);
@@ -363,6 +369,8 @@ function handleGetSettings() {
         'github_redirect_uri' => getSetting('github_redirect_uri'),
         'mirror_url' => getSetting('mirror_url', 'https://github.com'),
         'official_repo' => getSetting('official_repo', 'yuexia-php/plugins'),
+        'proxy_url' => getSetting('proxy_url', ''),
+        'proxy_type' => getSetting('proxy_type', 'http'),
     ];
 
     if (!empty($settings['github_client_secret']) && strlen($settings['github_client_secret']) > 8) {
@@ -707,100 +715,85 @@ function handleManifestCallback() {
     wlog("GitHub OAuth App 自动配置成功: client_id=" . $data['client_id'], 'system');
 
     // 重定向回设置页
-    header('Location: ' . dirname($_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_ok');
+    header('Location: ' . dirname(\$_SERVER['SCRIPT_NAME']) . '/../github_settings.php?msg=setup_ok');
+}
+function handleTestProxy() {
+    $csrfToken = $_POST['csrf_token'] ?? '';
+    if (!Auth::verifyCsrfToken($csrfToken)) {
+        echo json_encode(["success" => false, "error" => "CSRF验证失败"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $proxyUrl = trim($_POST['proxy_url'] ?? '');
+    if (empty($proxyUrl)) {
+        echo json_encode(["success" => false, "error" => "请输入代理地址"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $start = microtime(true);
+    $opts = [
+        'http' => [
+            'proxy' => $proxyUrl,
+            'request_fulluri' => true,
+            'header' => "User-Agent: Yuexia-Proxy-Test/1.0\r\n",
+            'timeout' => 15
+        ]
+    ];
+    $ctx = stream_context_create($opts);
+    $resp = @file_get_contents("http://www.gstatic.com/generate_204", false, $ctx);
+
+    if ($resp !== false) {
+        $ms = round((microtime(true) - $start) * 1000);
+        echo json_encode(["success" => true, "ms" => $ms], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo json_encode(["success" => false, "error" => "代理连接失败，请检查地址是否正确"], JSON_UNESCAPED_UNICODE);
+    }
 }
 
-
-注意：severity 字段: safe=安全, warning=需关注, danger=高风险。
-score 字段: 0-100 分，越高越安全。
-如果没有发现问题，issues 数组可以为空。";
-
-    $maxCodeLen = 80000;
-    if (strlen($code) > $maxCodeLen) {
-        $code = substr($code, 0, $maxCodeLen) . "\n\n// ... (代码过长，已截断)";
-    }
-
-    $postData = json_encode([
-        "model" => $model,
-        "messages" => [
-            ["role" => "system", "content" => $systemPrompt],
-            ["role" => "user", "content" => "请审核以下 PHP 代码：\n\n```php\n" . $code . "\n```"]
-        ],
-        "temperature" => 0.1,
-        "max_tokens" => 4000
-    ]);
-
-    $apiUrl = $baseUrl . '/chat/completions';
-    $ctx = stream_context_create([
-        'http' => [
-            'method' => 'POST',
-            'header' => "Content-Type: application/json\r\nAuthorization: Bearer " . $apiKey . "\r\nUser-Agent: Yuexia-PHP-Marketplace/1.0\r\n",
-            'content' => $postData,
-            'timeout' => 60
-        ]
-    ]);
-
-    $response = @file_get_contents($apiUrl, false, $ctx);
-    if (!$response) {
-        echo json_encode(["code" => 500, "msg" => "AI API 请求失败，请检查 API Key 和网络连接"], JSON_UNESCAPED_UNICODE);
+/**
+ * 检查框架版本（服务器端代理，浏览器无需直连 GitHub）
+ */
+function handleCheckFrameworkVersion() {
+    $verFile = dirname(__DIR__, 2) . '/version.json';
+    $local = @json_decode(file_get_contents($verFile), true);
+    if (!$local || empty($local['repo'])) {
+        echo json_encode(["code" => 400, "msg" => "版本文件读取失败"], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $result = json_decode($response, true);
-    if (!$result || !isset($result['choices'][0]['message']['content'])) {
-        $errMsg = $result['error']['message'] ?? 'AI 响应格式异常';
-        echo json_encode(["code" => 500, "msg" => "AI 审核失败: " . $errMsg], JSON_UNESCAPED_UNICODE);
+    $repo = $local['repo'];
+    $localBuild = intval($local['build'] ?? 0);
+
+    $token = getSetting('github_admin_token', '');
+    $header = "User-Agent: Yuexia-VersionCheck/1.0\r\n" . ($token ? "Authorization: Bearer {$token}\r\n" : "");
+    $ctx = stream_context_create(['http' => ['header' => $header, 'timeout' => 10]]);
+    $resp = @file_get_contents("https://api.github.com/repos/{$repo}/contents/version.json", false, $ctx);
+
+    if (!$resp) {
+        echo json_encode(["code" => 500, "msg" => "检查失败（网络超时）"], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $aiContent = $result['choices'][0]['message']['content'];
-
-    $report = json_decode($aiContent, true);
-    if ($report && isset($report['severity'])) {
-        $severity = $report['severity'];
-        $score = $report['score'] ?? 0;
-        $summary = $report['summary'] ?? '';
-        $issues = $report['issues'] ?? [];
-        $overall = $report['overall'] ?? '';
-
-        $formattedReport = "## 审核结果\n\n";
-        $formattedReport .= "**评分**: {$score}/100\n\n";
-        $formattedReport .= "**总结**: {$summary}\n\n";
-
-        if (!empty($issues)) {
-            $formattedReport .= "### 发现的问题\n\n";
-            foreach ($issues as $i => $issue) {
-                $line = $issue['line'] !== 'general' ? ' (第 ' . $issue['line'] . ' 行)' : '';
-                $formattedReport .= "**{$issue['title']}**{$line}\n";
-                $formattedReport .= "   - 类型: {$issue['type']} | 严重度: {$issue['level']}\n";
-                $formattedReport .= "   - {$issue['description']}\n";
-                if (!empty($issue['suggestion'])) {
-                    $formattedReport .= "   - 建议: {$issue['suggestion']}\n";
-                }
-                $formattedReport .= "\n";
-            }
-        } else {
-            $formattedReport .= "未发现明显问题，代码质量良好。\n\n";
-        }
-
-        if ($overall) {
-            $formattedReport .= "### 总体评价\n\n{$overall}";
-        }
-
-        echo json_encode([
-            "code" => 200,
-            "report" => $formattedReport,
-            "severity" => $severity,
-            "score" => $score,
-            "summary" => $summary,
-            "issues_count" => count($issues)
-        ], JSON_UNESCAPED_UNICODE);
-    } else {
-        echo json_encode([
-            "code" => 200,
-            "report" => $aiContent,
-            "severity" => "warning"
-        ], JSON_UNESCAPED_UNICODE);
+    $data = json_decode($resp, true);
+    if (!$data || !isset($data['content'])) {
+        echo json_encode(["code" => 500, "msg" => "远程版本解析失败"], JSON_UNESCAPED_UNICODE);
+        exit;
     }
+
+    $remote = json_decode(base64_decode($data['content']), true);
+    if (!$remote || !isset($remote['build'])) {
+        echo json_encode(["code" => 500, "msg" => "远程版本格式异常"], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $remoteBuild = intval($remote['build']);
+    echo json_encode([
+        "code" => 200,
+        "local_version" => $local['version'],
+        "local_build" => $localBuild,
+        "remote_version" => $remote['version'],
+        "remote_build" => $remoteBuild,
+        "has_update" => $remoteBuild > $localBuild
+    ], JSON_UNESCAPED_UNICODE);
 }
 

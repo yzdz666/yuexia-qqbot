@@ -79,6 +79,31 @@ require_once('header.php');
     </div>
   </div>
 
+  <!-- 代理设置 -->
+  <div class="card" style="margin-bottom: 20px;">
+    <div class="card-header"><h3>代理配置</h3></div>
+    <div class="card-body">
+      <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+        配置 HTTP 代理转发 API 请求，解决服务器无法直连 GitHub/AI 服务的问题
+      </p>
+      <div class="form-group">
+        <label>代理地址</label>
+        <input type="text" id="proxyUrl" placeholder="留空不使用代理" value="">
+        <div class="help-text">格式: http://127.0.0.1:7890 或 http://user:pass@proxy:port</div>
+      </div>
+      <div class="form-group">
+        <label>代理协议</label>
+        <div style="display:flex; gap:12px;">
+          <label style="font-weight:400;font-size:13px;"><input type="radio" name="proxyType" value="http" checked> HTTP</label>
+          <label style="font-weight:400;font-size:13px;"><input type="radio" name="proxyType" value="socks5"> SOCKS5</label>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="saveProxySetting()">保存代理设置</button>
+      <button class="btn btn-secondary btn-sm" onclick="testProxy()" id="testProxyBtn" style="margin-left:8px;">测试连接</button>
+      <div id="proxySaveMsg" style="font-size: 12px; margin-top: 4px;"></div>
+    </div>
+  </div>
+
   <!-- OAuth设置 -->
   <div class="card" style="margin-bottom: 20px;">
     <div class="card-header"><h3>官方插件仓库</h3></div>
@@ -136,6 +161,13 @@ function loadSettings() {
                 document.getElementById('mirrorUrl').value = s.mirror_url || 'https://github.com';
                 highlightMirrorPreset(s.mirror_url || 'https://github.com');
                 document.getElementById('officialRepo').value = s.official_repo || 'yuexia-php/plugins';
+                document.getElementById('proxyUrl').value = s.proxy_url || '';
+                if (s.proxy_type) {
+                    var radios = document.querySelectorAll('input[name="proxyType"]');
+                    for (var i = 0; i < radios.length; i++) {
+                        radios[i].checked = radios[i].value === s.proxy_type;
+                    }
+                }
             }
         });
 }
@@ -335,6 +367,68 @@ document.getElementById('mirrorPresets').addEventListener('click', function(e) {
 function getCsrfToken() {
     var meta = document.querySelector('meta[name="csrf-token"]');
     return meta ? meta.content : '';
+}
+
+function saveProxySetting() {
+    var url = document.getElementById('proxyUrl').value.trim();
+    var type = document.querySelector('input[name="proxyType"]:checked').value;
+    var btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 保存中...';
+
+    fetch('api/github_auth.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'type=save_settings&csrf_token=' + getCsrfToken() + '&proxy_url=' + encodeURIComponent(url) + '&proxy_type=' + encodeURIComponent(type)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var msg = document.getElementById('proxySaveMsg');
+        if (data.code === 200) {
+            msg.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> 代理设置已保存</span>';
+        } else {
+            msg.innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> ' + (data.msg || '保存失败') + '</span>';
+        }
+        setTimeout(function() { msg.innerHTML = ''; }, 3000);
+    })
+    .catch(function() {
+        document.getElementById('proxySaveMsg').innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> 保存失败</span>';
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '保存代理设置';
+    });
+}
+
+function testProxy() {
+    var url = document.getElementById('proxyUrl').value.trim();
+    if (!url) { alert('请先输入代理地址'); return; }
+    var btn = document.getElementById('testProxyBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 测试中...';
+    document.getElementById('proxySaveMsg').innerHTML = '';
+
+    fetch('api/github_auth.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'type=test_proxy&csrf_token=' + getCsrfToken() + '&proxy_url=' + encodeURIComponent(url)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var msg = document.getElementById('proxySaveMsg');
+        if (data.success) {
+            msg.innerHTML = '<span style="color: var(--success);"><i class="fas fa-check-circle"></i> 代理连通！延迟: ' + data.ms + 'ms</span>';
+        } else {
+            msg.innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> ' + (data.error || '连接失败') + '</span>';
+        }
+    })
+    .catch(function() {
+        document.getElementById('proxySaveMsg').innerHTML = '<span style="color: var(--danger);"><i class="fas fa-times-circle"></i> 测试请求失败</span>';
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-plug"></i> 测试连接';
+    });
 }
 
 loadGithubStatus();

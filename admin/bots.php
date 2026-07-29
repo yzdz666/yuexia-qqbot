@@ -60,7 +60,8 @@ $bots = getBots();
               <div style="display:flex; align-items:center; gap:10px;">
                 <div class="bot-avatar">
                   <?php if (!empty($avatar)): ?>
-                    <img src="<?= htmlspecialchars($avatar) ?>" alt="头像" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <img src="<?= htmlspecialchars($avatar) ?>" alt="头像" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
+                      style="width:40px;height:40px;border-radius:50%;object-fit:cover;background:var(--bg);">
                     <div class="bot-avatar-default" style="display:none;"><?= mb_substr($appid, 0, 2) ?></div>
                   <?php else: ?>
                     <div class="bot-avatar-default"><?= mb_substr($appid, 0, 2) ?></div>

@@ -504,6 +504,110 @@ switch ($action) {
         json_response(['success' => true, 'message' => "导入完成：成功 {$imported} 条" . ($errors > 0 ? "，失败 {$errors} 条" : ''), 'imported' => $imported, 'errors' => $errors]);
         break;
 
+    case 'framework_update':
+        $csrfToken = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $csrfToken)) {
+            json_response(['success' => false, 'message' => 'CSRF Token验证失败'], 403);
+        }
+
+        $localVer = @json_decode(file_get_contents(__DIR__ . '/../version.json'), true);
+        if (!$localVer || empty($localVer['repo'])) {
+            json_response(['success' => false, 'message' => '版本信息读取失败']);
+        }
+
+        $repo = $localVer['repo'];
+        $token = defined('GITHUB_TOKEN') ? GITHUB_TOKEN : '';
+        $header = "User-Agent: Yuexia-Updater/1.0\r\n" . ($token ? "Authorization: Bearer {$token}\r\n" : "");
+
+        // 下载最新代码 zip
+        $zipUrl = "https://api.github.com/repos/{$repo}/zipball/main";
+        $ctx = stream_context_create(['http' => ['header' => $header, 'timeout' => 60]]);
+        $zip = @file_get_contents($zipUrl, false, $ctx);
+        if (!$zip || strlen($zip) < 100) {
+            json_response(['success' => false, 'message' => '下载更新包失败']);
+        }
+
+        $tmpDir = sys_get_temp_dir() . '/yuexia_update_' . time();
+        @mkdir($tmpDir, 0755, true);
+        $zipFile = $tmpDir . '/update.zip';
+        file_put_contents($zipFile, $zip);
+
+        $zipArc = new ZipArchive();
+        if ($zipArc->open($zipFile) !== true) {
+            @unlink($zipFile); @rmdir($tmpDir);
+            json_response(['success' => false, 'message' => '解压失败']);
+        }
+
+        // 获取根目录名（GitHub zip 会包含一层目录）
+        $rootDir = $zipArc->getNameIndex(0);
+        $extractTo = $tmpDir . '/extract';
+        $zipArc->extractTo($extractTo);
+        $zipArc->close();
+        @unlink($zipFile);
+
+        $sourceDir = $extractTo . '/' . $rootDir;
+        if (!is_dir($sourceDir)) {
+            removeDir($tmpDir);
+            json_response(['success' => false, 'message' => '解压目录结构异常']);
+        }
+
+        // 备份当前 config 文件
+        $dataDir = __DIR__ . '/../data';
+        $backupDir = $tmpDir . '/data_backup';
+        if (is_dir($dataDir)) {
+            @mkdir($backupDir, 0755, true);
+            copyDir($dataDir, $backupDir);
+        }
+
+        // 替换文件（跳过 data 目录）
+        $appDir = __DIR__ . '/..';
+        $updated = 0;
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($sourceDir, RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            $relPath = substr($file->getPathname(), strlen($sourceDir) + 1);
+            if (strpos($relPath, 'data/') === 0 || strpos($relPath, '.git') === 0) continue;
+            $destPath = $appDir . '/' . $relPath;
+            $destDir = dirname($destPath);
+            if (!is_dir($destDir)) @mkdir($destDir, 0755, true);
+            if (copy($file->getPathname(), $destPath)) {
+                @chmod($destPath, 0644);
+                $updated++;
+            }
+        }
+
+        // 恢复 data 目录
+        if (is_dir($backupDir)) {
+            copyDir($backupDir, $dataDir);
+        }
+
+        // 清理
+        removeDir($tmpDir);
+
+        json_response(['success' => true, 'message' => "更新完成，共更新 {$updated} 个文件"]);
+        break;
+
     default:
         json_response(['success' => false, 'message' => '未知操作: ' . htmlspecialchars($action)], 400);
+}
+
+function removeDir($dir) {
+    if (!is_dir($dir)) return;
+    $items = array_diff(scandir($dir), ['.', '..']);
+    foreach ($items as $item) {
+        $path = $dir . '/' . $item;
+        is_dir($path) ? removeDir($path) : @unlink($path);
+    }
+    @rmdir($dir);
+}
+
+function copyDir($src, $dst) {
+    @mkdir($dst, 0755, true);
+    $items = array_diff(scandir($src), ['.', '..']);
+    foreach ($items as $item) {
+        $s = $src . '/' . $item;
+        $d = $dst . '/' . $item;
+        if (is_dir($s)) { copyDir($s, $d); } else { copy($s, $d); @chmod($d, 0644); }
+    }
 }
